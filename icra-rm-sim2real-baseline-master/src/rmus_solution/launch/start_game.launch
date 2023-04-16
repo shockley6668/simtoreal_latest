@@ -6,7 +6,7 @@
         args="0 0 0 -0.5 0.5 -0.5 0.5  camera_aligned_depth_to_color_frame   camera_aligned_depth_to_color_frame_correct" />
         <node pkg="rqt_py_trees" type="rqt_py_trees" name="rqt_py_trees" output="screen"></node> 
         <node pkg="rmus_solution" type="img_processor.py" name="img_process_node" output="screen"></node>
-        <!-- <node pkg="rmus_solution" type="get_odom.py" name="get_odom_node" output="screen"></node> -->
+        <node pkg="rmus_solution" type="get_center_dis.py" name="get_center_dis" output="screen"></node>
         <node pkg="rmus_solution" type="test.py" name="game_top_node" output="screen"></node> 
         <!-- 启动arriltag识别 -->
         <!-- <include file="$(find apriltag_ros)/launch/continuous_detection.launch.launch" /> -->

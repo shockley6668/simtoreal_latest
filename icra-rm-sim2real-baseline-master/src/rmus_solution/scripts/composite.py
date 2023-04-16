@@ -5,7 +5,7 @@ import py_trees
 
 from actionlib_msgs.msg import GoalStatus
 import rospy
-from std_msgs.msg import UInt8MultiArray ,Float64MultiArray
+from std_msgs.msg import UInt8MultiArray ,Float64MultiArray,Float32
 import sys
 import math
 import actionlib
@@ -293,11 +293,14 @@ class aim_block(py_trees.behaviour.Behaviour):
             self.action_client = None
             return False
         return True
+    def center_distance_callback(self,msg):
+        self.center_distance=msg.data
+
     def initialise(self):
         self.aim_begin_time=rospy.get_time()
         self.arm_gripper_pub = rospy.Publisher("arm_gripper", Point, queue_size=2)
         self.see_block=[]
-        
+        self.center_distance=None
         self.arm_position_pub = rospy.Publisher("arm_position", Pose, queue_size=2)
         self.blackboard=py_trees.blackboard.Blackboard()
         self.flag_odom=True
@@ -310,7 +313,7 @@ class aim_block(py_trees.behaviour.Behaviour):
         self.cmd_pos_pub=rospy.Publisher("/cmd_position",Twist,queue_size=1)
         self.sendBaseVel([0,0,0])
         self.errdet_flag=True
-        
+        self.Subscriber("center_distances",Float32,self.center_distance_callback)
         self.tfBuffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tfBuffer)
         try:
@@ -497,18 +500,14 @@ class aim_block(py_trees.behaviour.Behaviour):
             if self.ly_flag:
                 if not self.lx_flag:
 
-                    cmd_vel[0]=self.lx_control.update(pos[0]-0.38,rospy.get_time()-self.last_time)
+                    cmd_vel[0]=self.lx_control.update(self.center_distance-0.18,rospy.get_time()-self.last_time)
             else:
                 cmd_vel[1]=self.ly_control.update(pos[1],rospy.get_time()-self.last_time)
-            if abs(pos[0]-0.38)<0.02 :
+            if abs(self.center_distance-0.18)<0.02 :
                 self.lx_flag=True
                 cmd_vel[0]=0
             if self.lx_flag and self.ly_flag:
                 self.sendBaseVel([0,0,0])
-                twist = Twist()
-                twist.linear.x = 0.1
-                self.cmd_pos_pub.publish(twist)
-                rospy.sleep(1)
                 return py_trees.Status.SUCCESS
             else:
                 print(cmd_vel)
@@ -627,12 +626,15 @@ class place_block(py_trees.behaviour.Behaviour):
         return pos   
     def placed_block_id_callback(self,msg):
         self.placed_block_idlist=list(np.frombuffer(msg.data,np.uint8))
+    def center_distance_callback(self,msg):
+        self.center_distance=msg.data
+
     def initialise(self):
         self.blackboard=py_trees.blackboard.Blackboard()
         now_take_block=self.blackboard.get("now_take_block")
         need_block=self.blackboard.get("need_block")
-        
-        
+        self.center_distance=None
+        rospy.Subscriber("center_distances",Float32,self.center_distance_callback)
         # need_block=[5,3,4]
         self.switch_mode=rospy.ServiceProxy('/image_processor_switch_mode',switch)
         self.cmd_vel_puber = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
@@ -648,6 +650,8 @@ class place_block(py_trees.behaviour.Behaviour):
         self.y_control=PID_controller(3.6,0.09,0.2,0.5)
         self.last_time=None
         self.aim=False
+        self.x_control=PID_controller(3.6,0.09,0.2,0.5)
+        self.x_flag=False
     def update(self):
         if not self.aim:
             if self.current_marker_poses is None:
@@ -666,13 +670,15 @@ class place_block(py_trees.behaviour.Behaviour):
                 self.sendBaseVel([0,0,0])
                 self.aim=True
         self.ep_arm.pre()
-        twist=Twist()
-        twist.linear.x = 0.2
-        self.cmd_pos_pub.publish(twist)
-        rospy.sleep(3)
-        twist.linear.x = 0
-        self.cmd_pos_pub.publish(twist)
-        rospy.sleep(1.0)
+        if self.center_distance==None:
+            return py_trees.Status.RUNNING
+        if abs(self.center_distance)>0.2 and not self.x_flag:
+            cmd_vel[0]=self.y_control.update(pos[1],rospy.get_time()-self.last_time)
+            self.sendBaseVel(cmd_vel)
+            return py_trees.Status.RUNNING
+        if abs(self.center_distance)<=0.2:
+            self.x_flag=True
+            self.sendBaseVel([0,0,0])
         self.ep_arm.open_gripper()
         rospy.sleep(1.0)
         reset_thread = threading.Thread(target=self.ep_arm.reset_arm)
