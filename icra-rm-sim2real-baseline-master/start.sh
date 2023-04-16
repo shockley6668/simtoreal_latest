@@ -1,0 +1,2 @@
+sleep 1
+roslaunch rmus_solution start_game.launch
